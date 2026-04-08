@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, Search, Music, Play, MonitorPlay, Disc3, Loader2, StopCircle, Waves, Key, Server, Lock, Percent } from 'lucide-react';
+import { Mic, Search, Music, Play, Pause, MonitorPlay, Disc3, Loader2, StopCircle, Waves, Key, Server, Lock, Percent, X } from 'lucide-react';
 
 export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -10,10 +10,15 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('audio');
   const [error, setError] = useState('');
   
-  // ACRCloud requires 3 pieces of information for authentication
+  // ACRCloud Authentication
   const [acrHost, setAcrHost] = useState(''); 
   const [acrAccessKey, setAcrAccessKey] = useState('');
   const [acrAccessSecret, setAcrAccessSecret] = useState('');
+
+  // Player States
+  const [currentTrack, setCurrentTrack] = useState(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [openIframeId, setOpenIframeId] = useState(null);
 
   const mediaRecorderRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -21,8 +26,34 @@ export default function App() {
   const canvasRef = useRef(null);
   const animationFrameRef = useRef(null);
   const timerRef = useRef(null);
+  const audioRef = useRef(null);
 
-  // Live Text Search using iTunes API (Free, no API key needed)
+  // Global Player Controls
+  const togglePlay = (track) => {
+    if (!track.previewUrl) return;
+
+    if (currentTrack?.id === track.id) {
+      setIsPlaying(!isPlaying);
+    } else {
+      setCurrentTrack(track);
+      setIsPlaying(true);
+    }
+  };
+
+  useEffect(() => {
+    if (audioRef.current && currentTrack) {
+      if (isPlaying) {
+        audioRef.current.play().catch(e => {
+          console.error("Playback failed:", e);
+          setIsPlaying(false);
+        });
+      } else {
+        audioRef.current.pause();
+      }
+    }
+  }, [currentTrack, isPlaying]);
+
+  // Live Text Search using iTunes API
   const handleTextSearch = async (e) => {
     e?.preventDefault();
     if (!searchQuery.trim()) return;
@@ -45,10 +76,11 @@ export default function App() {
           album: track.collectionName,
           coverArt: track.artworkUrl100.replace('100x100', '300x300'),
           previewUrl: track.previewUrl,
+          youtubeId: null, // iTunes doesn't provide exact YT IDs
           spotifyUrl: `https://open.spotify.com/search/${encodeURIComponent(track.trackName + ' ' + track.artistName)}`,
           youtubeUrl: `https://www.youtube.com/results?search_query=${encodeURIComponent(track.trackName + ' ' + track.artistName)}`,
           appleUrl: track.trackViewUrl,
-          score: null // Text search doesn't have a confidence score
+          score: null 
         })));
       }
     } catch (err) {
@@ -58,7 +90,7 @@ export default function App() {
     }
   };
 
-  // Generate HMAC-SHA1 signature required by ACRCloud using native Web Crypto API
+  // Generate HMAC-SHA1 signature
   const generateACRSignature = async (timestamp) => {
     const stringToSign = ['POST', '/v1/identify', acrAccessKey, 'audio', '1', timestamp].join('\n');
     const encoder = new TextEncoder();
@@ -70,7 +102,6 @@ export default function App() {
     );
     const signatureBuffer = await crypto.subtle.sign('HMAC', cryptoKey, msgData);
     
-    // Convert buffer to base64
     const signatureArray = Array.from(new Uint8Array(signatureBuffer));
     return btoa(String.fromCharCode.apply(null, signatureArray));
   };
@@ -88,8 +119,8 @@ export default function App() {
       setError('');
       setRecordingTime(0);
       setResults([]);
+      setOpenIframeId(null);
 
-      // Setup Web Audio API for visualizer
       audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
       analyserRef.current = audioContextRef.current.createAnalyser();
       const source = audioContextRef.current.createMediaStreamSource(stream);
@@ -98,7 +129,6 @@ export default function App() {
 
       drawVisualizer();
 
-      // Setup MediaRecorder to capture audio chunks
       let chunks = [];
       mediaRecorderRef.current = new MediaRecorder(stream);
       
@@ -106,7 +136,6 @@ export default function App() {
         if (e.data.size > 0) chunks.push(e.data);
       };
 
-      // When recording stops, process the chunks into a file and send to API
       mediaRecorderRef.current.onstop = () => {
         const audioBlob = new Blob(chunks, { type: 'audio/webm' });
         processRealAudio(audioBlob);
@@ -132,7 +161,7 @@ export default function App() {
 
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop(); // Triggers the onstop event
+      mediaRecorderRef.current.stop(); 
       mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
       setIsRecording(false);
       clearInterval(timerRef.current);
@@ -162,7 +191,6 @@ export default function App() {
       formData.append('signature', signature);
       formData.append('timestamp', timestamp);
 
-      // Clean up the host just in case the user added https://
       let urlHost = acrHost.trim();
       if (!urlHost.startsWith('http')) {
         urlHost = `https://${urlHost}`;
@@ -177,13 +205,10 @@ export default function App() {
 
       if (data.status && data.status.code === 0 && data.metadata && data.metadata.music) {
         
-        // ACRCloud returns an array of possible matches. We will map up to 5 similar results.
         const matches = data.metadata.music.slice(0, 5);
         
         const formattedResults = matches.map(track => {
           const artistName = track.artists ? track.artists.map(a => a.name).join(', ') : 'Unknown Artist';
-          
-          // Grab external IDs to build links directly if ACRCloud provides them
           const spotifyId = track.external_metadata?.spotify?.track?.id;
           const youtubeId = track.external_metadata?.youtube?.vid;
 
@@ -192,10 +217,10 @@ export default function App() {
             title: track.title,
             artist: artistName,
             album: track.album?.name || "Unknown Album",
-            score: track.score, // Confidence score from 1-100
-            // ACRCloud base tier doesn't always provide album art URLs directly, using placeholder as fallback
+            score: track.score, 
             coverArt: 'https://images.unsplash.com/photo-1614680376593-902f74cf0d41?w=300&h=300&fit=crop',
-            previewUrl: '', // No direct preview audio URL provided by standard ACRCloud
+            previewUrl: '', 
+            youtubeId: youtubeId, // We use this to embed the video!
             spotifyUrl: spotifyId ? `https://open.spotify.com/track/${spotifyId}` : `https://open.spotify.com/search/${encodeURIComponent(track.title + ' ' + artistName)}`,
             youtubeUrl: youtubeId ? `https://www.youtube.com/watch?v=${youtubeId}` : `https://www.youtube.com/results?search_query=${encodeURIComponent(track.title + ' ' + artistName)}`,
             appleUrl: `https://music.apple.com/us/search?term=${encodeURIComponent(track.title + ' ' + artistName)}`
@@ -260,7 +285,7 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#121212] text-white font-sans selection:bg-pink-500 selection:text-white">
       {/* Header */}
-      <header className="p-6 border-b border-gray-800 flex items-center justify-center gap-3">
+      <header className="p-6 border-b border-gray-800 flex items-center justify-center gap-3 relative z-10 bg-[#121212]">
         <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-violet-600 to-pink-500 flex items-center justify-center shadow-lg shadow-pink-500/20">
           <Waves className="w-6 h-6 text-white" />
         </div>
@@ -269,7 +294,8 @@ export default function App() {
         </h1>
       </header>
 
-      <main className="max-w-3xl mx-auto p-6 flex flex-col items-center">
+      {/* Main Content Area (padding bottom prevents content hiding behind floating player) */}
+      <main className={`max-w-3xl mx-auto p-6 flex flex-col items-center transition-all ${currentTrack ? 'pb-28' : ''}`}>
         
         {/* Tabs */}
         <div className="flex bg-gray-900 rounded-full p-1 mb-12 w-full max-w-sm">
@@ -424,64 +450,139 @@ export default function App() {
               {activeTab === 'audio' ? 'Possible Matches' : 'Results'}
             </h2>
             {results.map((track, index) => (
-              <div key={track.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-4 flex flex-col sm:flex-row gap-4 items-center hover:border-gray-700 transition-colors relative overflow-hidden">
+              <div key={track.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-4 flex flex-col hover:border-gray-700 transition-colors relative overflow-hidden">
                 
                 {/* Score Badge */}
                 {track.score && (
-                  <div className="absolute top-0 right-0 bg-gradient-to-l from-pink-600 to-violet-600 px-3 py-1 rounded-bl-xl text-xs font-bold text-white flex items-center gap-1 shadow-lg">
+                  <div className="absolute top-0 right-0 bg-gradient-to-l from-pink-600 to-violet-600 px-3 py-1 rounded-bl-xl text-xs font-bold text-white flex items-center gap-1 shadow-lg z-10">
                     {track.score} <Percent className="w-3 h-3" /> Match
                   </div>
                 )}
 
-                {/* Rank Number (if audio search) */}
+                {/* Rank Number */}
                 {activeTab === 'audio' && (
                   <div className="absolute top-2 left-2 w-6 h-6 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-xs font-bold text-gray-400 z-10">
                     {index + 1}
                   </div>
                 )}
 
-                {/* Album Art & Preview Player */}
-                <div className="relative group w-24 h-24 shrink-0 mt-2 sm:mt-0">
-                  <img src={track.coverArt} alt={track.title} className="w-full h-full rounded-xl object-cover shadow-lg" />
-                  {track.previewUrl && (
-                    <button 
-                      onClick={() => {
-                        const audio = new Audio(track.previewUrl);
-                        audio.play();
-                      }}
-                      className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-xl"
-                    >
-                      <Play className="w-8 h-8 text-white fill-white" />
-                    </button>
-                  )}
-                </div>
+                {/* Card Main Row */}
+                <div className="flex flex-col sm:flex-row gap-4 items-center w-full">
+                  
+                  {/* Album Art & Inline Play Button */}
+                  <div className="relative group w-24 h-24 shrink-0 mt-2 sm:mt-0 cursor-pointer" onClick={() => {
+                      if (track.previewUrl) {
+                        togglePlay(track);
+                      } else if (track.youtubeId) {
+                        setOpenIframeId(openIframeId === track.id ? null : track.id);
+                      }
+                  }}>
+                    <img src={track.coverArt} alt={track.title} className="w-full h-full rounded-xl object-cover shadow-lg" />
+                    {(track.previewUrl || track.youtubeId) && (
+                      <div className={`absolute inset-0 bg-black/50 flex items-center justify-center transition-opacity rounded-xl ${
+                          (currentTrack?.id === track.id && isPlaying) ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                      }`}>
+                        {(currentTrack?.id === track.id && isPlaying) ? (
+                          <Pause className="w-8 h-8 text-white fill-white" />
+                        ) : (
+                          <Play className="w-8 h-8 text-white fill-white" />
+                        )}
+                      </div>
+                    )}
+                  </div>
 
-                {/* Track Info */}
-                <div className="flex-1 text-center sm:text-left min-w-0 w-full mt-2 sm:mt-0">
-                  <h3 className="text-lg font-bold text-white truncate pr-16">{track.title}</h3>
-                  <p className="text-gray-400 truncate">{track.artist}</p>
-                  <p className="text-gray-500 text-sm truncate mt-1">{track.album}</p>
-                </div>
+                  {/* Track Info */}
+                  <div className="flex-1 text-center sm:text-left min-w-0 w-full mt-2 sm:mt-0">
+                    <h3 className="text-lg font-bold text-white truncate pr-16">{track.title}</h3>
+                    <p className="text-gray-400 truncate">{track.artist}</p>
+                    <p className="text-gray-500 text-sm truncate mt-1">{track.album}</p>
+                  </div>
 
-                {/* External Links */}
-                <div className="flex sm:flex-col gap-2 shrink-0 w-full sm:w-auto justify-center mt-4 sm:mt-0 pt-4 sm:pt-0 border-t sm:border-t-0 border-gray-800">
-                  <a href={track.spotifyUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center w-10 h-10 rounded-full bg-gray-800 hover:bg-[#1DB954] hover:text-white text-gray-400 transition-colors tooltip-trigger" title="Search on Spotify">
-                    <Music className="w-5 h-5" />
-                  </a>
-                  <a href={track.youtubeUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center w-10 h-10 rounded-full bg-gray-800 hover:bg-[#FF0000] hover:text-white text-gray-400 transition-colors" title="Search on YouTube">
-                    <MonitorPlay className="w-5 h-5" />
-                  </a>
-                  {track.appleUrl && (
-                    <a href={track.appleUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center w-10 h-10 rounded-full bg-gray-800 hover:bg-white hover:text-black text-gray-400 transition-colors" title="View on Apple Music">
-                      <Disc3 className="w-5 h-5" />
+                  {/* Links / Inline Toggles */}
+                  <div className="flex sm:flex-col gap-2 shrink-0 w-full sm:w-auto justify-center mt-4 sm:mt-0 pt-4 sm:pt-0 border-t sm:border-t-0 border-gray-800">
+                    <a href={track.spotifyUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center w-10 h-10 rounded-full bg-gray-800 hover:bg-[#1DB954] hover:text-white text-gray-400 transition-colors tooltip-trigger" title="Search on Spotify">
+                      <Music className="w-5 h-5" />
                     </a>
-                  )}
+                    
+                    {/* If we have a Youtube ID, open it inline instead of a new tab! */}
+                    {track.youtubeId ? (
+                      <button 
+                        onClick={() => setOpenIframeId(openIframeId === track.id ? null : track.id)}
+                        className={`flex items-center justify-center w-10 h-10 rounded-full transition-colors ${openIframeId === track.id ? 'bg-[#FF0000] text-white' : 'bg-gray-800 hover:bg-[#FF0000] hover:text-white text-gray-400'}`} 
+                        title="Play on YouTube Inline"
+                      >
+                        <MonitorPlay className="w-5 h-5" />
+                      </button>
+                    ) : (
+                      <a href={track.youtubeUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center w-10 h-10 rounded-full bg-gray-800 hover:bg-[#FF0000] hover:text-white text-gray-400 transition-colors" title="Search on YouTube">
+                        <MonitorPlay className="w-5 h-5" />
+                      </a>
+                    )}
+
+                    {track.appleUrl && (
+                      <a href={track.appleUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center w-10 h-10 rounded-full bg-gray-800 hover:bg-white hover:text-black text-gray-400 transition-colors" title="View on Apple Music">
+                        <Disc3 className="w-5 h-5" />
+                      </a>
+                    )}
+                  </div>
                 </div>
+
+                {/* Inline YouTube Player (Expands if openIframeId matches) */}
+                {openIframeId === track.id && track.youtubeId && (
+                  <div className="w-full mt-6 rounded-xl overflow-hidden bg-black aspect-video animate-in slide-in-from-top-4">
+                    <iframe
+                      width="100%"
+                      height="100%"
+                      src={`https://www.youtube.com/embed/${track.youtubeId}?autoplay=1`}
+                      title="YouTube video player"
+                      frameBorder="0"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                      allowFullScreen
+                    ></iframe>
+                  </div>
+                )}
+
               </div>
             ))}
           </div>
         )}
       </main>
+
+      {/* Global Floating Audio Player (For Text Search Previews) */}
+      {currentTrack && (
+        <div className="fixed bottom-0 left-0 right-0 bg-gray-900 border-t border-gray-800 p-4 flex items-center justify-center z-50 animate-in slide-in-from-bottom-full duration-300">
+          <div className="flex items-center gap-4 max-w-xl w-full">
+            <img src={currentTrack.coverArt} className="w-14 h-14 rounded-lg object-cover shadow-lg" alt="" />
+            
+            <div className="flex-1 min-w-0">
+              <p className="text-white font-bold truncate text-sm">{currentTrack.title}</p>
+              <p className="text-gray-400 truncate text-xs">{currentTrack.artist}</p>
+            </div>
+            
+            <button 
+              onClick={() => setIsPlaying(!isPlaying)} 
+              className="w-12 h-12 flex items-center justify-center bg-white text-black rounded-full hover:scale-105 transition-transform"
+            >
+              {isPlaying ? <Pause className="w-6 h-6 fill-current" /> : <Play className="w-6 h-6 fill-current" />}
+            </button>
+            
+            <button 
+              onClick={() => { setIsPlaying(false); setCurrentTrack(null); }} 
+              className="p-2 text-gray-500 hover:text-white transition-colors"
+            >
+              <X className="w-6 h-6" />
+            </button>
+          </div>
+          
+          {/* Hidden Native Audio Element */}
+          <audio
+            ref={audioRef}
+            src={currentTrack.previewUrl}
+            onEnded={() => setIsPlaying(false)}
+            className="hidden"
+          />
+        </div>
+      )}
     </div>
   );
 }
