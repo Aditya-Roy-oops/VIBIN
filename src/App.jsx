@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, Search, Music, Play, MonitorPlay, Disc3, Loader2, StopCircle, Waves, Key, Server, Lock } from 'lucide-react';
+import { Mic, Search, Music, Play, MonitorPlay, Disc3, Loader2, StopCircle, Waves, Key, Server, Lock, Percent } from 'lucide-react';
 
 export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -47,7 +47,8 @@ export default function App() {
           previewUrl: track.previewUrl,
           spotifyUrl: `https://open.spotify.com/search/${encodeURIComponent(track.trackName + ' ' + track.artistName)}`,
           youtubeUrl: `https://www.youtube.com/results?search_query=${encodeURIComponent(track.trackName + ' ' + track.artistName)}`,
-          appleUrl: track.trackViewUrl
+          appleUrl: track.trackViewUrl,
+          score: null // Text search doesn't have a confidence score
         })));
       }
     } catch (err) {
@@ -175,28 +176,36 @@ export default function App() {
       const data = await response.json();
 
       if (data.status && data.status.code === 0 && data.metadata && data.metadata.music) {
-        // ACRCloud returns an array of possible matches, we take the best one (first)
-        const track = data.metadata.music[0];
-        const artistName = track.artists ? track.artists.map(a => a.name).join(', ') : 'Unknown Artist';
         
-        // Grab external IDs to build links directly if ACRCloud provides them
-        const spotifyId = track.external_metadata?.spotify?.track?.id;
-        const youtubeId = track.external_metadata?.youtube?.vid;
+        // ACRCloud returns an array of possible matches. We will map up to 5 similar results.
+        const matches = data.metadata.music.slice(0, 5);
+        
+        const formattedResults = matches.map(track => {
+          const artistName = track.artists ? track.artists.map(a => a.name).join(', ') : 'Unknown Artist';
+          
+          // Grab external IDs to build links directly if ACRCloud provides them
+          const spotifyId = track.external_metadata?.spotify?.track?.id;
+          const youtubeId = track.external_metadata?.youtube?.vid;
 
-        setResults([{
-          id: track.acrid || Math.random().toString(),
-          title: track.title,
-          artist: artistName,
-          album: track.album?.name || "Unknown Album",
-          // ACRCloud base tier doesn't always provide album art URLs directly, using placeholder as fallback
-          coverArt: 'https://images.unsplash.com/photo-1614680376593-902f74cf0d41?w=300&h=300&fit=crop',
-          previewUrl: '', // No direct preview audio URL provided by standard ACRCloud
-          spotifyUrl: spotifyId ? `https://open.spotify.com/track/${spotifyId}` : `https://open.spotify.com/search/${encodeURIComponent(track.title + ' ' + artistName)}`,
-          youtubeUrl: youtubeId ? `https://www.youtube.com/watch?v=${youtubeId}` : `https://www.youtube.com/results?search_query=${encodeURIComponent(track.title + ' ' + artistName)}`,
-          appleUrl: `https://music.apple.com/us/search?term=${encodeURIComponent(track.title + ' ' + artistName)}`
-        }]);
+          return {
+            id: track.acrid || Math.random().toString(),
+            title: track.title,
+            artist: artistName,
+            album: track.album?.name || "Unknown Album",
+            score: track.score, // Confidence score from 1-100
+            // ACRCloud base tier doesn't always provide album art URLs directly, using placeholder as fallback
+            coverArt: 'https://images.unsplash.com/photo-1614680376593-902f74cf0d41?w=300&h=300&fit=crop',
+            previewUrl: '', // No direct preview audio URL provided by standard ACRCloud
+            spotifyUrl: spotifyId ? `https://open.spotify.com/track/${spotifyId}` : `https://open.spotify.com/search/${encodeURIComponent(track.title + ' ' + artistName)}`,
+            youtubeUrl: youtubeId ? `https://www.youtube.com/watch?v=${youtubeId}` : `https://www.youtube.com/results?search_query=${encodeURIComponent(track.title + ' ' + artistName)}`,
+            appleUrl: `https://music.apple.com/us/search?term=${encodeURIComponent(track.title + ' ' + artistName)}`
+          };
+        });
+
+        setResults(formattedResults);
+
       } else {
-        setError(data.status?.msg || "Could not identify the song. Try holding the mic closer to the music.");
+        setError(data.status?.msg || "Could not identify the song. Try humming louder or longer.");
         setResults([]);
       }
     } catch (err) {
@@ -328,7 +337,7 @@ export default function App() {
               </div>
 
               <p className="text-xs text-gray-500 mt-2 text-center">
-                Create an Audio Recognition project at <a href="https://console.acrcloud.com" target="_blank" rel="noreferrer" className="text-pink-400 hover:underline">console.acrcloud.com</a> to get credentials.
+                For singing/humming, ensure your ACRCloud project is a <strong className="text-pink-400">"Humming & Singing Recognition"</strong> project, not a standard audio project.
               </p>
             </div>
 
@@ -362,9 +371,9 @@ export default function App() {
               {isRecording ? (
                 <p className="text-pink-400 font-medium animate-pulse">Listening... {recordingTime}s (max 10s)</p>
               ) : isProcessing ? (
-                <p className="text-violet-400 font-medium animate-pulse">Sending to ACRCloud...</p>
+                <p className="text-violet-400 font-medium animate-pulse">Analyzing Audio...</p>
               ) : (
-                <p className="text-gray-400">Play music near your microphone to identify it.</p>
+                <p className="text-gray-400">Hum, sing, or play music to identify it.</p>
               )}
             </div>
 
@@ -411,12 +420,28 @@ export default function App() {
         {/* Results Area */}
         {results.length > 0 && (
           <div className="w-full max-w-xl mt-12 space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <h2 className="text-xl font-bold mb-4">Results</h2>
-            {results.map((track) => (
-              <div key={track.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-4 flex flex-col sm:flex-row gap-4 items-center hover:border-gray-700 transition-colors">
+            <h2 className="text-xl font-bold mb-4">
+              {activeTab === 'audio' ? 'Possible Matches' : 'Results'}
+            </h2>
+            {results.map((track, index) => (
+              <div key={track.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-4 flex flex-col sm:flex-row gap-4 items-center hover:border-gray-700 transition-colors relative overflow-hidden">
                 
+                {/* Score Badge */}
+                {track.score && (
+                  <div className="absolute top-0 right-0 bg-gradient-to-l from-pink-600 to-violet-600 px-3 py-1 rounded-bl-xl text-xs font-bold text-white flex items-center gap-1 shadow-lg">
+                    {track.score} <Percent className="w-3 h-3" /> Match
+                  </div>
+                )}
+
+                {/* Rank Number (if audio search) */}
+                {activeTab === 'audio' && (
+                  <div className="absolute top-2 left-2 w-6 h-6 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-xs font-bold text-gray-400 z-10">
+                    {index + 1}
+                  </div>
+                )}
+
                 {/* Album Art & Preview Player */}
-                <div className="relative group w-24 h-24 shrink-0">
+                <div className="relative group w-24 h-24 shrink-0 mt-2 sm:mt-0">
                   <img src={track.coverArt} alt={track.title} className="w-full h-full rounded-xl object-cover shadow-lg" />
                   {track.previewUrl && (
                     <button 
@@ -432,14 +457,14 @@ export default function App() {
                 </div>
 
                 {/* Track Info */}
-                <div className="flex-1 text-center sm:text-left min-w-0">
-                  <h3 className="text-lg font-bold text-white truncate">{track.title}</h3>
+                <div className="flex-1 text-center sm:text-left min-w-0 w-full mt-2 sm:mt-0">
+                  <h3 className="text-lg font-bold text-white truncate pr-16">{track.title}</h3>
                   <p className="text-gray-400 truncate">{track.artist}</p>
                   <p className="text-gray-500 text-sm truncate mt-1">{track.album}</p>
                 </div>
 
                 {/* External Links */}
-                <div className="flex sm:flex-col gap-2 shrink-0">
+                <div className="flex sm:flex-col gap-2 shrink-0 w-full sm:w-auto justify-center mt-4 sm:mt-0 pt-4 sm:pt-0 border-t sm:border-t-0 border-gray-800">
                   <a href={track.spotifyUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center w-10 h-10 rounded-full bg-gray-800 hover:bg-[#1DB954] hover:text-white text-gray-400 transition-colors tooltip-trigger" title="Search on Spotify">
                     <Music className="w-5 h-5" />
                   </a>
