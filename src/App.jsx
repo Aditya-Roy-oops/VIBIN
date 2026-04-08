@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, Search, Music, MonitorPlay, Disc3, Loader2, StopCircle, Waves, Key, Server, Lock, Percent } from 'lucide-react';
+import { Mic, Search, Music, Play, MonitorPlay, Disc3, Loader2, StopCircle, Waves, Key, Server, Lock, Percent } from 'lucide-react';
 
 export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -45,8 +45,6 @@ export default function App() {
           album: track.collectionName,
           coverArt: track.artworkUrl100.replace('100x100', '300x300'),
           previewUrl: track.previewUrl,
-          spotifyId: null, // iTunes doesn't provide Spotify IDs
-          youtubeId: null, // iTunes doesn't provide YouTube IDs
           spotifyUrl: `https://open.spotify.com/search/${encodeURIComponent(track.trackName + ' ' + track.artistName)}`,
           youtubeUrl: `https://www.youtube.com/results?search_query=${encodeURIComponent(track.trackName + ' ' + track.artistName)}`,
           appleUrl: track.trackViewUrl,
@@ -185,7 +183,7 @@ export default function App() {
         const formattedResults = matches.map(track => {
           const artistName = track.artists ? track.artists.map(a => a.name).join(', ') : 'Unknown Artist';
           
-          // Grab external IDs to build embeds directly if ACRCloud provides them
+          // Grab external IDs to build links directly if ACRCloud provides them
           const spotifyId = track.external_metadata?.spotify?.track?.id;
           const youtubeId = track.external_metadata?.youtube?.vid;
 
@@ -195,10 +193,9 @@ export default function App() {
             artist: artistName,
             album: track.album?.name || "Unknown Album",
             score: track.score, // Confidence score from 1-100
-            coverArt: 'https://images.unsplash.com/photo-1614680376593-902f74cf0d41?w=300&h=300&fit=crop', // Fallback art
+            // ACRCloud base tier doesn't always provide album art URLs directly, using placeholder as fallback
+            coverArt: 'https://images.unsplash.com/photo-1614680376593-902f74cf0d41?w=300&h=300&fit=crop',
             previewUrl: '', // No direct preview audio URL provided by standard ACRCloud
-            spotifyId: spotifyId || null,
-            youtubeId: youtubeId || null,
             spotifyUrl: spotifyId ? `https://open.spotify.com/track/${spotifyId}` : `https://open.spotify.com/search/${encodeURIComponent(track.title + ' ' + artistName)}`,
             youtubeUrl: youtubeId ? `https://www.youtube.com/watch?v=${youtubeId}` : `https://www.youtube.com/results?search_query=${encodeURIComponent(track.title + ' ' + artistName)}`,
             appleUrl: `https://music.apple.com/us/search?term=${encodeURIComponent(track.title + ' ' + artistName)}`
@@ -261,7 +258,7 @@ export default function App() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#121212] text-white font-sans selection:bg-pink-500 selection:text-white pb-20">
+    <div className="min-h-screen bg-[#121212] text-white font-sans selection:bg-pink-500 selection:text-white">
       {/* Header */}
       <header className="p-6 border-b border-gray-800 flex items-center justify-center gap-3">
         <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-violet-600 to-pink-500 flex items-center justify-center shadow-lg shadow-pink-500/20">
@@ -427,7 +424,7 @@ export default function App() {
               {activeTab === 'audio' ? 'Possible Matches' : 'Results'}
             </h2>
             {results.map((track, index) => (
-              <div key={track.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-5 flex flex-col gap-4 hover:border-gray-700 transition-colors relative overflow-hidden">
+              <div key={track.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-4 flex flex-col sm:flex-row gap-4 items-center hover:border-gray-700 transition-colors relative overflow-hidden">
                 
                 {/* Score Badge */}
                 {track.score && (
@@ -443,73 +440,43 @@ export default function App() {
                   </div>
                 )}
 
-                {/* Top Section: Info & Links */}
-                <div className="flex flex-col sm:flex-row gap-4 items-center w-full">
-                  
-                  {/* Album Art */}
-                  <div className="relative w-24 h-24 shrink-0 mt-4 sm:mt-0">
-                    <img src={track.coverArt} alt={track.title} className="w-full h-full rounded-xl object-cover shadow-lg border border-gray-800" />
-                  </div>
-
-                  {/* Track Info */}
-                  <div className="flex-1 text-center sm:text-left min-w-0 w-full mt-2 sm:mt-0">
-                    <h3 className="text-xl font-bold text-white truncate pr-12">{track.title}</h3>
-                    <p className="text-pink-400 font-medium truncate">{track.artist}</p>
-                    <p className="text-gray-500 text-sm truncate mt-1">{track.album}</p>
-                  </div>
-
-                  {/* External Links */}
-                  <div className="flex sm:flex-col gap-2 shrink-0 w-full sm:w-auto justify-center mt-4 sm:mt-0 pt-4 sm:pt-0 border-t sm:border-t-0 border-gray-800">
-                    <a href={track.spotifyUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center w-10 h-10 rounded-full bg-gray-800 hover:bg-[#1DB954] hover:text-white text-gray-400 transition-colors tooltip-trigger" title="Open in Spotify">
-                      <Music className="w-5 h-5" />
-                    </a>
-                    <a href={track.youtubeUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center w-10 h-10 rounded-full bg-gray-800 hover:bg-[#FF0000] hover:text-white text-gray-400 transition-colors" title="Open in YouTube">
-                      <MonitorPlay className="w-5 h-5" />
-                    </a>
-                    {track.appleUrl && (
-                      <a href={track.appleUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center w-10 h-10 rounded-full bg-gray-800 hover:bg-white hover:text-black text-gray-400 transition-colors" title="Open in Apple Music">
-                        <Disc3 className="w-5 h-5" />
-                      </a>
-                    )}
-                  </div>
-                </div>
-
-                {/* Bottom Section: Embedded Player ("Play Right There") */}
-                <div className="w-full mt-2 bg-black/30 rounded-xl p-2 border border-gray-800/50">
-                  {track.spotifyId ? (
-                    <iframe 
-                      src={`https://open.spotify.com/embed/track/${track.spotifyId}?utm_source=generator&theme=0`} 
-                      width="100%" 
-                      height="80" 
-                      frameBorder="0" 
-                      allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" 
-                      loading="lazy"
-                      className="rounded-lg"
-                    ></iframe>
-                  ) : track.youtubeId ? (
-                    <iframe 
-                      src={`https://www.youtube.com/embed/${track.youtubeId}`} 
-                      width="100%" 
-                      height="80" 
-                      frameBorder="0" 
-                      allow="autoplay; encrypted-media" 
-                      loading="lazy"
-                      className="rounded-lg"
-                    ></iframe>
-                  ) : track.previewUrl ? (
-                    <audio 
-                      controls 
-                      controlsList="nodownload"
-                      src={track.previewUrl} 
-                      className="w-full h-10 rounded-full outline-none"
-                    ></audio>
-                  ) : (
-                    <p className="text-sm text-gray-500 text-center py-2 italic">
-                      No inline player available for this track. Please use the links above.
-                    </p>
+                {/* Album Art & Preview Player */}
+                <div className="relative group w-24 h-24 shrink-0 mt-2 sm:mt-0">
+                  <img src={track.coverArt} alt={track.title} className="w-full h-full rounded-xl object-cover shadow-lg" />
+                  {track.previewUrl && (
+                    <button 
+                      onClick={() => {
+                        const audio = new Audio(track.previewUrl);
+                        audio.play();
+                      }}
+                      className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-xl"
+                    >
+                      <Play className="w-8 h-8 text-white fill-white" />
+                    </button>
                   )}
                 </div>
 
+                {/* Track Info */}
+                <div className="flex-1 text-center sm:text-left min-w-0 w-full mt-2 sm:mt-0">
+                  <h3 className="text-lg font-bold text-white truncate pr-16">{track.title}</h3>
+                  <p className="text-gray-400 truncate">{track.artist}</p>
+                  <p className="text-gray-500 text-sm truncate mt-1">{track.album}</p>
+                </div>
+
+                {/* External Links */}
+                <div className="flex sm:flex-col gap-2 shrink-0 w-full sm:w-auto justify-center mt-4 sm:mt-0 pt-4 sm:pt-0 border-t sm:border-t-0 border-gray-800">
+                  <a href={track.spotifyUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center w-10 h-10 rounded-full bg-gray-800 hover:bg-[#1DB954] hover:text-white text-gray-400 transition-colors tooltip-trigger" title="Search on Spotify">
+                    <Music className="w-5 h-5" />
+                  </a>
+                  <a href={track.youtubeUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center w-10 h-10 rounded-full bg-gray-800 hover:bg-[#FF0000] hover:text-white text-gray-400 transition-colors" title="Search on YouTube">
+                    <MonitorPlay className="w-5 h-5" />
+                  </a>
+                  {track.appleUrl && (
+                    <a href={track.appleUrl} target="_blank" rel="noreferrer" className="flex items-center justify-center w-10 h-10 rounded-full bg-gray-800 hover:bg-white hover:text-black text-gray-400 transition-colors" title="View on Apple Music">
+                      <Disc3 className="w-5 h-5" />
+                    </a>
+                  )}
+                </div>
               </div>
             ))}
           </div>
