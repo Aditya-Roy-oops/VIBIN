@@ -1,5 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, Search, Music, Play, Pause, MonitorPlay, Loader2, StopCircle, Waves, Key, Server, Lock, Percent, X, Maximize2, Minimize2, AlertCircle } from 'lucide-react';
+import { Mic, Search, Music, Play, Pause, MonitorPlay, Loader2, StopCircle, Waves, Percent, X, Maximize2, Minimize2, AlertCircle } from 'lucide-react';
+
+// --- HARDCODED ACRCLOUD CREDENTIALS ---
+// Replace these with your actual ACRCloud project details!
+const ACR_HOST = "identify-us-west-2.acrcloud.com"; 
+const ACR_ACCESS_KEY = "YOUR_ACCESS_KEY_HERE";
+const ACR_ACCESS_SECRET = "YOUR_ACCESS_SECRET_HERE";
+
+// --- DEFAULT VIBIN LOGO (SVG Data URI) ---
+const DEFAULT_COVER_ART = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400' viewBox='0 0 400 400'%3E%3Crect width='400' height='400' fill='%23121212'/%3E%3Cdefs%3E%3ClinearGradient id='grad' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' style='stop-color:%238b5cf6;stop-opacity:1' /%3E%3Cstop offset='100%25' style='stop-color:%23ec4899;stop-opacity:1' /%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='200' cy='200' r='110' fill='none' stroke='url(%23grad)' stroke-width='25'/%3E%3Cpath d='M180 150l70 50-70 50V150z' fill='url(%23grad)'/%3E%3C/svg%3E";
 
 export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
@@ -9,11 +18,6 @@ export default function App() {
   const [recordingTime, setRecordingTime] = useState(0);
   const [activeTab, setActiveTab] = useState('audio');
   const [error, setError] = useState('');
-  
-  // ACRCloud Authentication
-  const [acrHost, setAcrHost] = useState(''); 
-  const [acrAccessKey, setAcrAccessKey] = useState('');
-  const [acrAccessSecret, setAcrAccessSecret] = useState('');
 
   // Pro-Level Global Player States
   const [nowPlaying, setNowPlaying] = useState(null);
@@ -115,7 +119,7 @@ export default function App() {
           title: track.trackName,
           artist: track.artistName,
           album: track.collectionName,
-          coverArt: track.artworkUrl100.replace('100x100', '400x400'),
+          coverArt: track.artworkUrl100 ? track.artworkUrl100.replace('100x100', '400x400') : DEFAULT_COVER_ART,
           previewUrl: track.previewUrl,
           youtubeId: null, // Will be fetched when user clicks Play
           score: null 
@@ -130,16 +134,16 @@ export default function App() {
 
   // --- AUDIO RECOGNITION LOGIC (ACRCloud) ---
   const generateACRSignature = async (timestamp) => {
-    const stringToSign = ['POST', '/v1/identify', acrAccessKey, 'audio', '1', timestamp].join('\n');
+    const stringToSign = ['POST', '/v1/identify', ACR_ACCESS_KEY, 'audio', '1', timestamp].join('\n');
     const encoder = new TextEncoder();
-    const cryptoKey = await crypto.subtle.importKey('raw', encoder.encode(acrAccessSecret), { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
+    const cryptoKey = await crypto.subtle.importKey('raw', encoder.encode(ACR_ACCESS_SECRET), { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
     const signatureBuffer = await crypto.subtle.sign('HMAC', cryptoKey, encoder.encode(stringToSign));
     return btoa(String.fromCharCode.apply(null, Array.from(new Uint8Array(signatureBuffer))));
   };
 
   const startRecording = async () => {
-    if (!acrHost || !acrAccessKey || !acrAccessSecret) {
-      setError("Please configure your ACRCloud credentials below.");
+    if (!ACR_HOST || ACR_ACCESS_KEY === 'YOUR_ACCESS_KEY_HERE') {
+      setError("ACRCloud API keys have not been configured in the code yet.");
       return;
     }
 
@@ -209,13 +213,13 @@ export default function App() {
       const formData = new FormData();
       formData.append('sample', audioBlob);
       formData.append('sample_bytes', audioBlob.size.toString());
-      formData.append('access_key', acrAccessKey);
+      formData.append('access_key', ACR_ACCESS_KEY);
       formData.append('data_type', 'audio');
       formData.append('signature_version', '1');
       formData.append('signature', signature);
       formData.append('timestamp', timestamp);
 
-      let urlHost = acrHost.trim();
+      let urlHost = ACR_HOST.trim();
       if (!urlHost.startsWith('http')) urlHost = `https://${urlHost}`;
 
       const response = await fetch(`${urlHost}/v1/identify`, { method: 'POST', body: formData });
@@ -225,13 +229,14 @@ export default function App() {
         const matches = data.metadata.music.slice(0, 5);
         setResults(matches.map(track => {
           const artistName = track.artists ? track.artists.map(a => a.name).join(', ') : 'Unknown Artist';
+          
           return {
             id: track.acrid || Math.random().toString(),
             title: track.title,
             artist: artistName,
             album: track.album?.name || "Unknown Album",
             score: track.score, 
-            coverArt: 'https://images.unsplash.com/photo-1614680376593-902f74cf0d41?w=400&h=400&fit=crop',
+            coverArt: DEFAULT_COVER_ART,
             previewUrl: null, 
             youtubeId: track.external_metadata?.youtube?.vid || null, 
           };
@@ -353,17 +358,6 @@ export default function App() {
 
             <canvas ref={canvasRef} width="400" height="80" className={`rounded-xl transition-opacity duration-500 mb-12 ${isRecording ? 'opacity-100' : 'opacity-0'}`} />
 
-            {/* Admin Settings for ACRCloud */}
-            <div className="w-full max-w-md bg-white/5 p-6 rounded-3xl border border-white/10 backdrop-blur-md">
-              <h3 className="text-sm font-bold text-gray-300 mb-4 flex items-center gap-2">
-                <Server className="w-4 h-4" /> ACRCloud Settings
-              </h3>
-              <div className="space-y-3">
-                <input type="text" placeholder="Host URL (e.g. identify-us...)" value={acrHost} onChange={(e) => setAcrHost(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-xl py-3 px-4 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-pink-500 transition-all" />
-                <input type="text" placeholder="Access Key" value={acrAccessKey} onChange={(e) => setAcrAccessKey(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-xl py-3 px-4 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-pink-500 transition-all" />
-                <input type="password" placeholder="Access Secret" value={acrAccessSecret} onChange={(e) => setAcrAccessSecret(e.target.value)} className="w-full bg-black/50 border border-white/10 rounded-xl py-3 px-4 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-pink-500 transition-all" />
-              </div>
-            </div>
           </div>
         )}
 
