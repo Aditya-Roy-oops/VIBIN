@@ -3,7 +3,7 @@ import { Mic, Search, Music, Play, Pause, MonitorPlay, Loader2, StopCircle, Wave
 
 // --- HARDCODED ACRCLOUD CREDENTIALS ---
 // Replace these with your actual ACRCloud project details!
-const ACR_HOST = "identify-us-west-2.acrcloud.com"; 
+const ACR_HOST = "dentify-ap-southeast-1.acrcloud.com"; 
 const ACR_ACCESS_KEY = "02f63ca3886b9b0ae509d8e40d196e10";
 const ACR_ACCESS_SECRET = "tUf8XvsBFstz4HzY0Fs5ZE1ekLdHTwWXuY0qrB8K";
 
