@@ -4,8 +4,8 @@ import { Mic, Search, Music, Play, Pause, MonitorPlay, Loader2, StopCircle, Wave
 // --- HARDCODED ACRCLOUD CREDENTIALS ---
 // Replace these with your actual ACRCloud project details!
 const ACR_HOST = "identify-us-west-2.acrcloud.com"; 
-const ACR_ACCESS_KEY = "YOUR_ACCESS_KEY_HERE";
-const ACR_ACCESS_SECRET = "YOUR_ACCESS_SECRET_HERE";
+const ACR_ACCESS_KEY = "02f63ca3886b9b0ae509d8e40d196e10";
+const ACR_ACCESS_SECRET = "tUf8XvsBFstz4HzY0Fs5ZE1ekLdHTwWXuY0qrB8K";
 
 // --- DEFAULT VIBIN LOGO (SVG Data URI) ---
 const DEFAULT_COVER_ART = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400' viewBox='0 0 400 400'%3E%3Crect width='400' height='400' fill='%23121212'/%3E%3Cdefs%3E%3ClinearGradient id='grad' x1='0%25' y1='0%25' x2='100%25' y2='100%25'%3E%3Cstop offset='0%25' style='stop-color:%238b5cf6;stop-opacity:1' /%3E%3Cstop offset='100%25' style='stop-color:%23ec4899;stop-opacity:1' /%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='200' cy='200' r='110' fill='none' stroke='url(%23grad)' stroke-width='25'/%3E%3Cpath d='M180 150l70 50-70 50V150z' fill='url(%23grad)'/%3E%3C/svg%3E";
